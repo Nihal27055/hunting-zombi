@@ -378,7 +378,7 @@
         const BOSS_LEVEL = MAX_LEVEL; // Level at which the boss appears
         
         // Performance optimization settings
-        const MAX_ZOMBIES = 10; // Reduced from 15 to improve performance
+        const MAX_ZOMBIES = 15; // Increased to allow more zombies at higher levels
         const MAX_BULLETS = 8; // Reduced from 10
         const UPDATE_FREQUENCY = 50; // Increased from 30 to reduce physics update frequency
         let lastUpdateTime = 0;
@@ -861,28 +861,18 @@
             
             // Mouse click for shooting - Fixed for reliable shooting
             document.addEventListener('mousedown', function(e) {
-                if (document.pointerLockElement === document.getElementById('gameCanvas')) {
-                    if (e.button === 0) { // Left mouse button
-                        if (canShoot) {
-                            shoot();
-                            canShoot = false;
-                            setTimeout(() => { canShoot = true; }, FIRE_RATE);
-                        }
-                    } else if (e.button === 2) { // Right mouse button
-                        moveLeft = false; // Ensure no movement on right click
-                        moveRight = false;
+                if (document.pointerLockElement === document.getElementById('gameCanvas') && e.button === 0) {
+                    if (canShoot) {
+                        shoot();
+                        canShoot = false;
+                        setTimeout(() => { canShoot = true; }, FIRE_RATE);
                     }
                 }
             });
             
             document.addEventListener('mouseup', function(e) {
-                if (document.pointerLockElement === document.getElementById('gameCanvas')) {
-                    if (e.button === 0) { // Left mouse button
-                        isShooting = false;
-                    } else if (e.button === 2) { // Right mouse button
-                        moveLeft = false; // Ensure no movement on right click release
-                        moveRight = false;
-                    }
+                if (e.button === 0) {
+                    isShooting = false;
                 }
             });
             
@@ -970,11 +960,11 @@
             // Determine current speed (running or walking)
             const currentSpeed = isRunning ? runningSpeed : playerSpeed;
             
-            // Apply movement based on keys - CORRECTED direction
+            // Apply movement based on keys - FIXED inverted controls
             if (moveForward) player.position.addScaledVector(forward, currentSpeed);
             if (moveBackward) player.position.addScaledVector(forward, -currentSpeed);
-            if (moveLeft) player.position.addScaledVector(right, -currentSpeed);
-            if (moveRight) player.position.addScaledVector(right, currentSpeed);
+            if (moveLeft) player.position.addScaledVector(right, currentSpeed);
+            if (moveRight) player.position.addScaledVector(right, -currentSpeed);
             
             // Check for collisions with environment
             if (checkEnvironmentCollisions()) {
@@ -1140,7 +1130,7 @@
             // Only spawn regular zombies if boss is not active
             if (!bossActive) {
                 // Spawn more frequently at higher levels
-                const spawnInterval = Math.max(2000 - (currentLevel * 150), 1000); // Increased minimum delay
+                const spawnInterval = Math.max(2000 - (currentLevel * 200), 800); // Faster spawning at higher levels
                 
                 if (now - lastZombieSpawn > spawnInterval && zombies.length < MAX_ZOMBIES) {
                     spawnZombie();
@@ -1154,31 +1144,31 @@
             
             // Check for and resolve zombie stacking issues
             checkZombieStacking();
+
+            // Check for and resolve stuck zombies
+            checkForStuckZombies(now);
             
             // Update existing zombies - optimized
             for (let i = zombies.length - 1; i >= 0; i--) {
                 const zombie = zombies[i];
                 
+                // Only update zombies that are within visible range (40 units - reduced from 50)
+                const distanceToPlayer = zombie.mesh.position.distanceTo(player.position);
+                
+                // Process special abilities
+                let currentSpeed = zombie.speed;
+                
                 // Check for zombies stuck too far from the play area
                 if (Math.abs(zombie.mesh.position.x) > 95 || Math.abs(zombie.mesh.position.z) > 95) {
                     // Teleport zombie back to a reasonable position
                     const angle = Math.random() * Math.PI * 2;
-                    const distance = 70 + Math.random() * 20; // Increased distance for teleportation
+                    const distance = 50 + Math.random() * 20;
                     zombie.mesh.position.x = player.position.x + Math.cos(angle) * distance;
                     zombie.mesh.position.z = player.position.z + Math.sin(angle) * distance;
                     continue; // Skip this update cycle
                 }
                 
-                // Only update zombies that are within visible range (40 units - reduced from 50)
-                // Increased range to ensure all zombies stay active when closer to player
-                const distanceToPlayer = zombie.mesh.position.distanceTo(player.position);
-                if (distanceToPlayer > 60) {
-                    continue; // Skip update for very distant zombies to save performance
-                }
-                
-                let currentSpeed = zombie.speed;
-                
-                // Process special abilities
+                // Speed burst ability - optimized
                 if (zombie.specialAbilities && zombie.specialAbilities.speedBurst) {
                     const speedBurst = zombie.specialAbilities.speedBurst;
                     
@@ -1236,9 +1226,9 @@
                 }
                 zombie.lastUpdatePosition.copy(zombie.mesh.position);
                 
-                // Zombie AI - avoid obstacles sometimes (less frequently to improve performance)
-                if (Math.random() < 0.01) { // Reduced from 0.02
-                    const randomAngle = Math.random() * Math.PI / 4 - Math.PI / 8;
+                // Zombie AI - occasionally add small random movement to avoid clustering
+                if (Math.random() < 0.005) { // Very rare random direction changes
+                    const randomAngle = (Math.random() - 0.5) * Math.PI / 6; // Small random angle
                     const rotationMatrix = new THREE.Matrix4().makeRotationY(randomAngle);
                     direction.applyMatrix4(rotationMatrix);
                 }
@@ -1604,10 +1594,9 @@
             // Clear zombies array
             zombies = [];
             
-            // Spawn new zombies for this level
-            const baseZombieCount = 3; // Base number of zombies to spawn
-            // Increased level bonus to scale more aggressively with level progression
-            const levelBonus = Math.floor(currentLevel * 1.5); // More zombies per level
+            // Spawn new zombies for this level - increased count at higher levels
+            const baseZombieCount = 4; // Base number of zombies to spawn
+            const levelBonus = Math.min(currentLevel - 1, 6); // Up to 6 extra zombies based on level
             const zombiesToSpawn = baseZombieCount + levelBonus;
             
             // Spawn zombies with a delay between each
@@ -1897,14 +1886,14 @@
         // Add a new function to check for and resolve stuck zombies
         function checkForStuckZombies(now) {
             // Check for zombies that haven't moved much
-            const stuckCheckDistance = 0.5; // Distance threshold to consider a zombie stuck
-            const stuckCheckTime = 5000; // Time threshold (5 seconds) to consider a zombie stuck
-            
+            const stuckCheckDistance = 0.3; // Reduced threshold to detect stuck zombies more easily
+            const stuckCheckTime = 3000; // Reduced time threshold (3 seconds) to consider a zombie stuck
+
             for (let i = zombies.length - 1; i >= 0; i--) {
                 const zombie = zombies[i];
-                
+
                 // Skip recently spawned zombies
-                if (!zombie.lastPosition || now - zombie.spawnTime < 2000) {
+                if (!zombie.lastPosition || now - zombie.spawnTime < 1000) {
                     // Initialize position tracking if not exists
                     if (!zombie.lastPosition) {
                         zombie.lastPosition = zombie.mesh.position.clone();
@@ -1912,26 +1901,30 @@
                     }
                     continue;
                 }
-                
+
                 // Check how long since last position check
-                if (now - zombie.lastMoveCheck > 1000) { // Check every second
+                if (now - zombie.lastMoveCheck > 500) { // Check more frequently
                     // Calculate distance moved since last check
                     const distMoved = zombie.mesh.position.distanceTo(zombie.lastPosition);
-                    
+
+                    // Update last position for next check
+                    zombie.lastPosition.copy(zombie.mesh.position);
+                    zombie.lastMoveCheck = now;
+
                     // If zombie hasn't moved much in the last check period
                     if (distMoved < stuckCheckDistance) {
                         // Increment stuck counter or initialize it
                         zombie.stuckCount = (zombie.stuckCount || 0) + 1;
-                        
-                        // If zombie has been stuck for too long (5 seconds)
-                        if (zombie.stuckCount >= 5) {
-                            // Teleport the zombie to a new position
+
+                        // If zombie has been stuck for too long (3 seconds = 6 checks)
+                        if (zombie.stuckCount >= 6) {
+                            // Teleport the zombie to a new position closer to player to ensure it attacks
                             const angle = Math.random() * Math.PI * 2;
-                            const distanceFromPlayer = 40 + Math.random() * 20;
-                            
+                            const distanceFromPlayer = 15 + Math.random() * 10; // Closer to player
+
                             zombie.mesh.position.x = player.position.x + Math.cos(angle) * distanceFromPlayer;
                             zombie.mesh.position.z = player.position.z + Math.sin(angle) * distanceFromPlayer;
-                            
+
                             // Reset stuck counter
                             zombie.stuckCount = 0;
                             
