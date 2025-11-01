@@ -861,18 +861,28 @@
             
             // Mouse click for shooting - Fixed for reliable shooting
             document.addEventListener('mousedown', function(e) {
-                if (document.pointerLockElement === document.getElementById('gameCanvas') && e.button === 0) {
-                    if (canShoot) {
-                        shoot();
-                        canShoot = false;
-                        setTimeout(() => { canShoot = true; }, FIRE_RATE);
+                if (document.pointerLockElement === document.getElementById('gameCanvas')) {
+                    if (e.button === 0) { // Left mouse button
+                        if (canShoot) {
+                            shoot();
+                            canShoot = false;
+                            setTimeout(() => { canShoot = true; }, FIRE_RATE);
+                        }
+                    } else if (e.button === 2) { // Right mouse button
+                        moveLeft = false; // Ensure no movement on right click
+                        moveRight = false;
                     }
                 }
             });
             
             document.addEventListener('mouseup', function(e) {
-                if (e.button === 0) {
-                    isShooting = false;
+                if (document.pointerLockElement === document.getElementById('gameCanvas')) {
+                    if (e.button === 0) { // Left mouse button
+                        isShooting = false;
+                    } else if (e.button === 2) { // Right mouse button
+                        moveLeft = false; // Ensure no movement on right click release
+                        moveRight = false;
+                    }
                 }
             });
             
@@ -1149,23 +1159,26 @@
             for (let i = zombies.length - 1; i >= 0; i--) {
                 const zombie = zombies[i];
                 
-                // Only update zombies that are within visible range (40 units - reduced from 50)
-                const distanceToPlayer = zombie.mesh.position.distanceTo(player.position);
-                
-                // Process special abilities
-                let currentSpeed = zombie.speed;
-                
                 // Check for zombies stuck too far from the play area
                 if (Math.abs(zombie.mesh.position.x) > 95 || Math.abs(zombie.mesh.position.z) > 95) {
                     // Teleport zombie back to a reasonable position
                     const angle = Math.random() * Math.PI * 2;
-                    const distance = 50 + Math.random() * 20;
+                    const distance = 70 + Math.random() * 20; // Increased distance for teleportation
                     zombie.mesh.position.x = player.position.x + Math.cos(angle) * distance;
                     zombie.mesh.position.z = player.position.z + Math.sin(angle) * distance;
                     continue; // Skip this update cycle
                 }
                 
-                // Speed burst ability - optimized
+                // Only update zombies that are within visible range (40 units - reduced from 50)
+                // Increased range to ensure all zombies stay active when closer to player
+                const distanceToPlayer = zombie.mesh.position.distanceTo(player.position);
+                if (distanceToPlayer > 60) {
+                    continue; // Skip update for very distant zombies to save performance
+                }
+                
+                let currentSpeed = zombie.speed;
+                
+                // Process special abilities
                 if (zombie.specialAbilities && zombie.specialAbilities.speedBurst) {
                     const speedBurst = zombie.specialAbilities.speedBurst;
                     
@@ -1593,7 +1606,8 @@
             
             // Spawn new zombies for this level
             const baseZombieCount = 3; // Base number of zombies to spawn
-            const levelBonus = Math.min(currentLevel - 1, 3); // Up to 3 extra zombies based on level
+            // Increased level bonus to scale more aggressively with level progression
+            const levelBonus = Math.floor(currentLevel * 1.5); // More zombies per level
             const zombiesToSpawn = baseZombieCount + levelBonus;
             
             // Spawn zombies with a delay between each
